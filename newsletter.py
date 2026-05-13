@@ -68,7 +68,7 @@ For further_ahead: aim for 2-3 events.
 If data is sparse, return what you can find."""
 
     resp = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=4000,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -106,7 +106,7 @@ Each object must have:
 Return ONLY valid JSON. No markdown."""
 
     resp = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -135,7 +135,7 @@ Return a single JSON object with:
 Return ONLY valid JSON."""
 
     resp = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5",
         max_tokens=500,
         messages=[{"role": "user", "content": prompt}]
     )
