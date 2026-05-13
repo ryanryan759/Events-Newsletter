@@ -1,0 +1,33 @@
+name: Send Friday Newsletter
+
+on:
+  # ── Runs every Friday at 8am London time (UTC+1 in summer, UTC in winter)
+  # ── Summer (BST): 7:00 UTC = 8:00 London
+  schedule:
+    - cron: "0 7 * * 5"
+
+  # ── Manual trigger — use this to test any time
+  workflow_dispatch:
+
+jobs:
+  send-newsletter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run newsletter
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: python newsletter.py
