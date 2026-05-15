@@ -35,7 +35,7 @@ def scrape_all(sources: list[str]) -> str:
 # ── Claude curation ──────────────────────────────────────────
 def curate_events(raw_text: str, category: str, extra_instructions: str = "") -> list[dict]:
     today = datetime.now()
-    one_month = (today + timedelta(days=30)).strftime("%d %B %Y")
+    one_month    = (today + timedelta(days=30)).strftime("%d %B %Y")
     three_months = (today + timedelta(days=90)).strftime("%d %B %Y")
 
     prompt = f"""You are curating a personal weekly events newsletter for someone based in London.
@@ -62,7 +62,7 @@ Extract and return a JSON array of events. Each event object must have:
 - "bucket": either "upcoming_month" (within {one_month}) or "further_ahead" (up to {three_months})
 - "category": one of: music | sustainability | art | networking
 
-Return ONLY valid JSON. No markdown, no explanation. 
+Return ONLY valid JSON. No markdown, no explanation.
 For upcoming_month: aim for 8-10 events total across categories.
 For further_ahead: aim for 2-3 events.
 If data is sparse, return what you can find."""
@@ -84,18 +84,18 @@ def get_music_headlines() -> list[dict]:
     prompt = f"""You are a music journalist writing for a London culture newsletter.
 Today: {datetime.now().strftime("%d %B %Y")}
 
-Using your knowledge of live music, return a JSON array of 5-7 notable upcoming live music events 
-or festivals happening in the UK (primarily London but can include major UK festivals) over the 
+Using your knowledge of live music, return a JSON array of 5-7 notable upcoming live music events
+or festivals happening in the UK (primarily London but can include major UK festivals) over the
 next 12 months that would appeal to someone who loves:
 
 Artists: {", ".join(FAVOURITE_ARTISTS)}
 Genres: {", ".join(FAVOURITE_GENRES)}
 
-Include 4-5 events matching their taste and 1-2 genuine surprises — artists outside their usual 
+Include 4-5 events matching their taste and 1-2 genuine surprises — artists outside their usual
 genres but that a culturally curious person might love. Mark surprises with "surprise": true.
 
 Each object must have:
-- "title": artist or festival name  
+- "title": artist or festival name
 - "date": approximate date or month/year
 - "venue": venue or festival site
 - "description": one punchy sentence on why this matters
@@ -122,8 +122,8 @@ def get_surprise_pick() -> dict:
 Artists: {", ".join(FAVOURITE_ARTISTS)}
 Genres: {", ".join(FAVOURITE_GENRES)}
 
-This should be completely outside their normal taste — could be classical, experimental, folk, 
-jazz, spoken word, world music — anything. But it should be something that, on reflection, 
+This should be completely outside their normal taste — could be classical, experimental, folk,
+jazz, spoken word, world music — anything. But it should be something that, on reflection,
 they might genuinely connect with given their broader sensibility.
 
 Return a single JSON object with:
@@ -145,147 +145,187 @@ Return ONLY valid JSON."""
     except Exception:
         return {"artist": "Erykah Badu", "genre": "Neo-soul", "why": "A curated surprise.", "url": "https://open.spotify.com"}
 
-# ── HTML template ────────────────────────────────────────────
+
+# ── HTML template — Broadsheet style ─────────────────────────
 def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str:
-    today_str = datetime.now().strftime("%A %d %B %Y").upper()
-    issue_num = datetime.now().strftime("%Y%W")
+    today_str  = datetime.now().strftime("%A %d %B %Y").upper()
+    date_short = datetime.now().strftime("%d %B %Y")
+    issue_num  = datetime.now().strftime("%Y%W")
 
     upcoming = [e for e in events if e.get("bucket") == "upcoming_month"]
     further  = [e for e in events if e.get("bucket") == "further_ahead"]
 
-    cat_icons = {"music": "◈", "sustainability": "◉", "art": "◆", "networking": "◇"}
+    cat_icons  = {"music": "◈", "sustainability": "◉", "art": "◆", "networking": "◇"}
     cat_labels = {"music": "MUSIC", "sustainability": "SUSTAINABILITY", "art": "ART & AUCTIONS", "networking": "NETWORKING"}
+
+    def price_badge(price: str) -> str:
+        if not price:
+            return ""
+        is_free = "free" in price.lower()
+        bg     = "#e8f5e1" if is_free else "#f9f6f0"
+        color  = "#2d6e1a" if is_free else "#555"
+        border = "#a3c98a" if is_free else "#ccc"
+        return f'<span style="background:{bg};color:{color};border:1px solid {border};font-family:\'Courier New\',monospace;font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 7px;">{price.upper()}</span>'
 
     def event_card(e: dict) -> str:
         icon  = cat_icons.get(e.get("category", ""), "◈")
         label = cat_labels.get(e.get("category", ""), e.get("category", "").upper())
-        price = e.get("price", "")
-        price_pill = f'<span style="background:#1a1a1a;color:#c8f542;font-family:\'Courier New\',monospace;font-size:10px;font-weight:700;letter-spacing:1px;padding:3px 8px;border:1px solid #c8f542;">{price.upper()}</span>' if price else ""
         return f"""
-<div style="border-top:1px solid #2a2a2a;padding:22px 0;">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-    <span style="color:#666;font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;">{icon} {label}</span>
-    {price_pill}
-  </div>
-  <h3 style="margin:0 0 4px;font-family:'Georgia',serif;font-size:20px;color:#f0f0f0;font-weight:700;line-height:1.2;">{e.get("title","")}</h3>
-  <p style="margin:0 0 8px;font-family:'Courier New',monospace;font-size:11px;color:#888;letter-spacing:1px;">{e.get("date","").upper()} &nbsp;·&nbsp; {e.get("venue","").upper()}</p>
-  <p style="margin:0 0 12px;font-family:'Georgia',serif;font-size:14px;color:#aaa;line-height:1.6;">{e.get("description","")}</p>
-  <a href="{e.get("url","#")}" style="font-family:'Courier New',monospace;font-size:10px;color:#c8f542;text-decoration:none;letter-spacing:2px;border-bottom:1px solid #c8f542;padding-bottom:1px;">GET TICKETS / INFO →</a>
+<div style="padding:16px 0;border-top:1px solid #d0ccc0;">
+  <table width="100%" cellpadding="0" cellspacing="0"><tr>
+    <td style="font-family:'Courier New',monospace;font-size:9px;color:#999;letter-spacing:2px;">{icon} {label}</td>
+    <td align="right">{price_badge(e.get("price",""))}</td>
+  </tr></table>
+  <h3 style="margin:6px 0 3px;font-family:Georgia,serif;font-size:17px;font-weight:700;color:#1a1a1a;line-height:1.25;">{e.get("title","")}</h3>
+  <p style="margin:0 0 6px;font-family:'Courier New',monospace;font-size:9px;color:#888;letter-spacing:1px;">{e.get("date","").upper()} &nbsp;·&nbsp; {e.get("venue","")}</p>
+  <p style="margin:0 0 8px;font-family:Georgia,serif;font-size:13px;color:#444;line-height:1.6;font-style:italic;">{e.get("description","")}</p>
+  <a href="{e.get("url","#")}" style="font-family:'Courier New',monospace;font-size:9px;color:#1a1a1a;letter-spacing:1px;text-decoration:none;border-bottom:1px solid #1a1a1a;padding-bottom:1px;">MORE INFO →</a>
 </div>"""
 
-    def headline_card(h: dict) -> str:
-        badge = '<span style="background:#c8f542;color:#000;font-family:\'Courier New\',monospace;font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 6px;margin-left:8px;">SURPRISE</span>' if h.get("surprise") else ""
-        return f"""
-<div style="border-top:1px solid #2a2a2a;padding:18px 0;display:flex;justify-content:space-between;align-items:flex-start;">
-  <div style="flex:1;">
-    <div style="display:flex;align-items:center;margin-bottom:4px;">
-      <span style="font-family:'Georgia',serif;font-size:16px;color:#f0f0f0;font-weight:700;">{h.get("title","")}</span>
-      {badge}
-    </div>
-    <p style="margin:0 0 4px;font-family:'Courier New',monospace;font-size:10px;color:#666;letter-spacing:1px;">{h.get("date","").upper()} &nbsp;·&nbsp; {h.get("venue","").upper()}</p>
-    <p style="margin:0;font-family:'Georgia',serif;font-size:13px;color:#888;line-height:1.5;">{h.get("description","")}</p>
-  </div>
-  <div style="margin-left:20px;text-align:right;flex-shrink:0;">
-    <p style="margin:0 0 6px;font-family:'Courier New',monospace;font-size:10px;color:#c8f542;">{h.get("price","")}</p>
-    <a href="{h.get("url","#")}" style="font-family:'Courier New',monospace;font-size:9px;color:#666;text-decoration:none;letter-spacing:1px;border-bottom:1px solid #444;padding-bottom:1px;">INFO →</a>
-  </div>
-</div>"""
+    def grid_events(event_list: list) -> str:
+        """Render events in a two-column newspaper grid."""
+        rows = []
+        for i in range(0, len(event_list), 2):
+            left  = event_card(event_list[i])
+            right = event_card(event_list[i + 1]) if i + 1 < len(event_list) else ""
+            rows.append(f"""
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <td width="48%" valign="top" style="padding-right:16px;">{left}</td>
+    <td width="4%"></td>
+    <td width="48%" valign="top">{right}</td>
+  </tr>
+</table>""")
+        return "".join(rows)
 
-    upcoming_html = "".join(event_card(e) for e in upcoming) or "<p style='color:#555;font-family:Georgia,serif;padding:20px 0;'>No events found this week — check back next Friday.</p>"
-    further_html  = "".join(event_card(e) for e in further)  or "<p style='color:#555;font-family:Georgia,serif;padding:20px 0;'>Nothing notable on the horizon yet.</p>"
-    headlines_html = "".join(headline_card(h) for h in headlines) or "<p style='color:#555;font-family:Georgia,serif;padding:20px 0;'>Check back for upcoming shows.</p>"
+    def headline_row(h: dict) -> str:
+        badge = '<span style="background:#1a1a1a;color:#f9f6f0;font-family:\'Courier New\',monospace;font-size:8px;font-weight:700;letter-spacing:1px;padding:2px 6px;margin-left:8px;">WILDCARD</span>' if h.get("surprise") else ""
+        return f"""
+<tr>
+  <td valign="top" style="padding:12px 0;border-top:1px solid #d0ccc0;width:58%;">
+    <p style="margin:0 0 2px;font-family:Georgia,serif;font-size:14px;font-weight:700;color:#1a1a1a;">{h.get("title","")}{badge}</p>
+    <p style="margin:0 0 4px;font-family:'Courier New',monospace;font-size:9px;color:#888;letter-spacing:1px;">{h.get("date","").upper()} &nbsp;·&nbsp; {h.get("venue","")}</p>
+    <p style="margin:0;font-family:Georgia,serif;font-size:12px;color:#555;font-style:italic;line-height:1.5;">{h.get("description","")}</p>
+  </td>
+  <td valign="top" style="padding:12px 0 12px 20px;border-top:1px solid #d0ccc0;text-align:right;">
+    <p style="margin:0 0 6px;font-family:'Courier New',monospace;font-size:10px;color:#1a1a1a;font-weight:700;">{h.get("price","")}</p>
+    <a href="{h.get("url","#")}" style="font-family:'Courier New',monospace;font-size:9px;color:#555;text-decoration:none;border-bottom:1px solid #bbb;padding-bottom:1px;letter-spacing:1px;">INFO →</a>
+  </td>
+</tr>"""
+
+    upcoming_html  = grid_events(upcoming)  if upcoming  else "<p style='font-family:Georgia,serif;color:#999;font-style:italic;padding:16px 0;'>No events found this week — check back next Friday.</p>"
+    further_html   = grid_events(further)   if further   else "<p style='font-family:Georgia,serif;color:#999;font-style:italic;padding:16px 0;'>Nothing notable on the horizon yet.</p>"
+    headlines_html = "".join(headline_row(h) for h in headlines) if headlines else "<tr><td><p style='font-family:Georgia,serif;color:#999;font-style:italic;'>Check back for upcoming shows.</p></td></tr>"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{NEWSLETTER_NAME} — {today_str}</title>
+<title>The Dispatch — {date_short}</title>
 </head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:Georgia,serif;">
-<div style="max-width:640px;margin:0 auto;background:#0a0a0a;">
+<body style="margin:0;padding:24px 0;background:#ede9e0;font-family:Georgia,serif;">
+<div style="max-width:660px;margin:0 auto;background:#f9f6f0;border:1px solid #c8c4b8;">
 
   <!-- MASTHEAD -->
-  <div style="padding:48px 40px 32px;border-bottom:3px solid #c8f542;">
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;">
-      <div>
-        <p style="margin:0 0 4px;font-family:'Courier New',monospace;font-size:9px;color:#666;letter-spacing:3px;">ISSUE {issue_num}</p>
-        <h1 style="margin:0;font-family:'Georgia',serif;font-size:48px;font-weight:700;color:#f0f0f0;letter-spacing:-1px;line-height:1;">THE<br>DISPATCH</h1>
-      </div>
-      <div style="text-align:right;">
-        <p style="margin:0;font-family:'Courier New',monospace;font-size:9px;color:#666;letter-spacing:2px;line-height:1.8;">{today_str}<br>LONDON EDITION</p>
-      </div>
-    </div>
-    <div style="margin-top:16px;display:flex;gap:12px;flex-wrap:wrap;">
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#444;letter-spacing:2px;">◈ MUSIC</span>
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#444;letter-spacing:2px;">◉ SUSTAINABILITY</span>
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#444;letter-spacing:2px;">◆ ART &amp; AUCTIONS</span>
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#444;letter-spacing:2px;">◇ NETWORKING</span>
-    </div>
-  </div>
-
-  <!-- INTRO -->
-  <div style="padding:28px 40px;border-bottom:1px solid #1e1e1e;background:#0f0f0f;">
-    <p style="margin:0;font-family:'Courier New',monospace;font-size:11px;color:#555;letter-spacing:1px;line-height:1.8;">
-      YOUR WEEKLY LONDON CULTURE BRIEF &nbsp;·&nbsp; CURATED EVERY FRIDAY &nbsp;·&nbsp; {len(upcoming)} EVENTS THIS MONTH
+  <div style="padding:32px 40px 20px;border-bottom:3px double #1a1a1a;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td valign="bottom">
+          <p style="margin:0 0 2px;font-family:'Courier New',monospace;font-size:8px;color:#999;letter-spacing:3px;">ISSUE {issue_num} &nbsp;·&nbsp; LONDON EDITION</p>
+          <h1 style="margin:0;font-family:Georgia,serif;font-size:52px;font-weight:700;color:#1a1a1a;letter-spacing:-2px;line-height:0.95;">The Dispatch</h1>
+        </td>
+        <td valign="bottom" align="right" style="padding-bottom:4px;">
+          <p style="margin:0;font-family:'Courier New',monospace;font-size:8px;color:#999;letter-spacing:1px;line-height:2;">{today_str}</p>
+          <p style="margin:0;font-family:'Courier New',monospace;font-size:8px;color:#999;letter-spacing:1px;">{len(upcoming)} EVENTS THIS MONTH</p>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:10px 0 0;font-family:'Courier New',monospace;font-size:8px;color:#aaa;letter-spacing:3px;">
+      ◈ MUSIC &nbsp;&nbsp; ◉ SUSTAINABILITY &nbsp;&nbsp; ◆ ART &amp; AUCTIONS &nbsp;&nbsp; ◇ NETWORKING
     </p>
   </div>
 
-  <!-- THIS MONTH -->
-  <div style="padding:40px 40px 0;">
-    <div style="margin-bottom:8px;">
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#c8f542;letter-spacing:3px;">THIS MONTH</span>
-    </div>
-    <h2 style="margin:0 0 4px;font-family:'Georgia',serif;font-size:32px;color:#f0f0f0;font-weight:700;">Upcoming Events</h2>
-    <p style="margin:0 0 24px;font-family:'Courier New',monospace;font-size:11px;color:#555;">NEXT 30 DAYS — LONDON</p>
+  <!-- DATELINE BAR -->
+  <div style="padding:8px 40px;border-bottom:1px solid #d0ccc0;background:#f0ece2;">
+    <p style="margin:0;font-family:'Courier New',monospace;font-size:8px;color:#aaa;letter-spacing:2px;">
+      YOUR WEEKLY LONDON CULTURE BRIEF &nbsp;·&nbsp; CURATED EVERY FRIDAY 8AM
+    </p>
+  </div>
+
+  <!-- THIS MONTH — two-column newspaper grid -->
+  <div style="padding:28px 40px 8px;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td><h2 style="margin:0;font-family:Georgia,serif;font-size:11px;font-weight:700;color:#1a1a1a;letter-spacing:3px;text-transform:uppercase;">This Month</h2></td>
+      <td align="right"><span style="font-family:'Courier New',monospace;font-size:8px;color:#aaa;letter-spacing:1px;">NEXT 30 DAYS</span></td>
+    </tr></table>
+    <div style="border-top:3px solid #1a1a1a;margin-top:6px;"></div>
     {upcoming_html}
   </div>
 
-  <!-- FURTHER AHEAD -->
-  <div style="padding:40px 40px 0;margin-top:8px;background:#0d0d0d;">
-    <div style="margin-bottom:8px;">
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#888;letter-spacing:3px;">ON THE HORIZON</span>
-    </div>
-    <h2 style="margin:0 0 4px;font-family:'Georgia',serif;font-size:28px;color:#d0d0d0;font-weight:700;">Further Ahead</h2>
-    <p style="margin:0 0 24px;font-family:'Courier New',monospace;font-size:11px;color:#555;">1–3 MONTHS OUT</p>
+  <!-- DIVIDER -->
+  <div style="margin:0 40px;border-top:1px solid #d0ccc0;"></div>
+
+  <!-- ON THE HORIZON — two-column grid -->
+  <div style="padding:24px 40px 8px;background:#f2ede3;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td><h2 style="margin:0;font-family:Georgia,serif;font-size:11px;font-weight:700;color:#1a1a1a;letter-spacing:3px;text-transform:uppercase;">On The Horizon</h2></td>
+      <td align="right"><span style="font-family:'Courier New',monospace;font-size:8px;color:#aaa;letter-spacing:1px;">1–3 MONTHS OUT</span></td>
+    </tr></table>
+    <div style="border-top:3px solid #1a1a1a;margin-top:6px;"></div>
     {further_html}
   </div>
 
-  <!-- MUSIC HEADLINES -->
-  <div style="padding:40px 40px 0;margin-top:8px;">
-    <div style="margin-bottom:8px;">
-      <span style="font-family:'Courier New',monospace;font-size:9px;color:#c8f542;letter-spacing:3px;">MUSIC</span>
-    </div>
-    <h2 style="margin:0 0 4px;font-family:'Georgia',serif;font-size:32px;color:#f0f0f0;font-weight:700;">Headline Acts &amp; Festivals</h2>
-    <p style="margin:0 0 24px;font-family:'Courier New',monospace;font-size:11px;color:#555;">NEXT 12 MONTHS — UK &amp; BEYOND</p>
-    {headlines_html}
+  <!-- MUSIC HEADLINES — full-width rows -->
+  <div style="padding:24px 40px 8px;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td><h2 style="margin:0;font-family:Georgia,serif;font-size:11px;font-weight:700;color:#1a1a1a;letter-spacing:3px;text-transform:uppercase;">Headline Acts &amp; Festivals</h2></td>
+      <td align="right"><span style="font-family:'Courier New',monospace;font-size:8px;color:#aaa;letter-spacing:1px;">NEXT 12 MONTHS</span></td>
+    </tr></table>
+    <div style="border-top:3px solid #1a1a1a;margin-top:6px;"></div>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      {headlines_html}
+    </table>
   </div>
 
-  <!-- SURPRISE PICK -->
-  <div style="margin:40px 40px;border:1px solid #c8f542;padding:28px;">
-    <p style="margin:0 0 4px;font-family:'Courier New',monospace;font-size:9px;color:#c8f542;letter-spacing:3px;">THIS WEEK'S WILDCARD</p>
-    <h3 style="margin:0 0 4px;font-family:'Georgia',serif;font-size:24px;color:#f0f0f0;font-weight:700;">{surprise.get("artist","")}</h3>
-    <p style="margin:0 0 12px;font-family:'Courier New',monospace;font-size:10px;color:#666;letter-spacing:1px;">{surprise.get("genre","").upper()}</p>
-    <p style="margin:0 0 16px;font-family:'Georgia',serif;font-size:14px;color:#aaa;line-height:1.6;">{surprise.get("why","")}</p>
-    <a href="{surprise.get("url","#")}" style="font-family:'Courier New',monospace;font-size:10px;color:#c8f542;text-decoration:none;letter-spacing:2px;border-bottom:1px solid #c8f542;padding-bottom:1px;">LISTEN NOW →</a>
+  <!-- WILDCARD PICK — dark inset box -->
+  <div style="margin:16px 40px 28px;padding:20px 24px;background:#1a1a1a;border:1px solid #333;">
+    <p style="margin:0 0 2px;font-family:'Courier New',monospace;font-size:8px;color:#aaa;letter-spacing:3px;">THIS WEEK'S WILDCARD</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;"><tr>
+      <td valign="top">
+        <h3 style="margin:0 0 2px;font-family:Georgia,serif;font-size:20px;font-weight:700;color:#f9f6f0;">{surprise.get("artist","")}</h3>
+        <p style="margin:0 0 10px;font-family:'Courier New',monospace;font-size:9px;color:#666;letter-spacing:2px;">{surprise.get("genre","").upper()}</p>
+        <p style="margin:0;font-family:Georgia,serif;font-size:13px;color:#bbb;line-height:1.6;font-style:italic;">{surprise.get("why","")}</p>
+      </td>
+      <td valign="middle" align="right" style="padding-left:20px;white-space:nowrap;">
+        <a href="{surprise.get("url","#")}" style="font-family:'Courier New',monospace;font-size:9px;color:#f9f6f0;text-decoration:none;border:1px solid #555;padding:6px 12px;letter-spacing:1px;">LISTEN →</a>
+      </td>
+    </tr></table>
   </div>
 
   <!-- FOOTER -->
-  <div style="padding:28px 40px 40px;border-top:1px solid #1a1a1a;">
-    <p style="margin:0 0 8px;font-family:'Courier New',monospace;font-size:9px;color:#333;letter-spacing:2px;">THE DISPATCH &nbsp;·&nbsp; LONDON &nbsp;·&nbsp; EVERY FRIDAY 8AM</p>
-    <p style="margin:0;font-family:'Courier New',monospace;font-size:9px;color:#2a2a2a;letter-spacing:1px;">To adjust preferences or sources, edit config.py in your GitHub repository.</p>
+  <div style="padding:16px 40px 24px;border-top:3px double #1a1a1a;background:#f0ece2;">
+    <table width="100%" cellpadding="0" cellspacing="0"><tr>
+      <td>
+        <p style="margin:0;font-family:'Courier New',monospace;font-size:8px;color:#aaa;letter-spacing:2px;">THE DISPATCH &nbsp;·&nbsp; LONDON &nbsp;·&nbsp; EVERY FRIDAY 8AM</p>
+      </td>
+      <td align="right">
+        <p style="margin:0;font-family:'Courier New',monospace;font-size:8px;color:#ccc;letter-spacing:1px;">Edit config.py to update preferences</p>
+      </td>
+    </tr></table>
   </div>
 
 </div>
 </body>
 </html>"""
 
+
 # ── Email sending ────────────────────────────────────────────
 def send_email(html: str):
     today_str = datetime.now().strftime("%d %B %Y")
     payload = {
-        "from": "The Dispatch <delivered@resend.dev>",
-"to": ["ryan.ryan759@gmail.com"],
+        "from": "The Dispatch <onboarding@resend.dev>",
+        "to": [TO_EMAIL],
         "subject": f"The Dispatch — Your London Week · {today_str}",
         "html": html,
     }
@@ -301,6 +341,7 @@ def send_email(html: str):
         print(f"❌ Resend error {r.status_code}: {r.text}")
         raise RuntimeError("Email sending failed")
 
+
 # ── Main ─────────────────────────────────────────────────────
 def main():
     print("🔍 Scraping music sources...")
@@ -313,9 +354,9 @@ def main():
     art_raw = scrape_all(ART_SOURCES)
 
     print("🤖 Curating events with Claude...")
-    music_events  = curate_events(music_raw,   "live music events in London")
-    sustain_events = curate_events(sustain_raw, "sustainability talks and networking events in London", "Only include FREE events.")
-    art_events    = curate_events(art_raw,     "art exhibitions, private views, and auctions in London")
+    music_events   = curate_events(music_raw,    "live music events in London")
+    sustain_events = curate_events(sustain_raw,  "sustainability talks and networking events in London", "Only include FREE events.")
+    art_events     = curate_events(art_raw,      "art exhibitions, private views, and auctions in London")
 
     all_events = music_events + sustain_events + art_events
 
@@ -330,6 +371,7 @@ def main():
 
     print("📬 Sending email...")
     send_email(html)
+
 
 if __name__ == "__main__":
     main()
