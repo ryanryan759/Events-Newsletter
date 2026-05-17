@@ -323,9 +323,9 @@ def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str
 # ── Email sending ────────────────────────────────────────────
 def send_email(html: str):
     today_str = datetime.now().strftime("%d %B %Y")
-    payload = {
+payload = {
         "from": "The Dispatch <onboarding@resend.dev>",
-        "to": [TO_EMAIL],
+        "to": "ryan.ryan759@gmail.com",
         "subject": f"The Dispatch — Your London Week · {today_str}",
         "html": html,
     }
