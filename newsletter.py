@@ -13,19 +13,100 @@ client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; NewsletterBot/1.0)"}
 
+# ── All venue & event sources ────────────────────────────────
+
+# Primary ticketing sources
+TICKETING_SOURCES = [
+    "https://dice.fm/browse/london",
+    "https://www.skiddle.com/whats-on/London/",
+    "https://www.shoobs.com/london",
+    "https://www.ticketmaster.co.uk/discover/concerts/london",
+]
+
+# Your named venues — direct what's on pages
+NAMED_VENUE_SOURCES = [
+    "https://www.shacklewellarms.com/events",
+    "https://phonox.co.uk/events",
+    "https://www.thecause.co.uk/events",
+    "https://www.thehaggerston.com/events",
+    "https://jagolondon.com/events",
+    "https://www.hootenanny.co.uk/events",
+    "https://www.electricbrixton.com/events",
+    "https://www.thecarpetshop.co.uk/events",
+    "https://peckhampalais.co.uk/events",
+    "https://nighttales.co.uk/events",
+    "https://bambi.london/events",
+]
+
+# Timeout 50 best nights out venues extracted
+TIMEOUT_VENUE_SOURCES = [
+    "https://www.residentadvisor.net/events/uk/london",
+    "https://fold.london/events",
+    "https://www.fabriclondon.com/events",
+    "https://www.ovalspace.co.uk/events",
+    "https://www.howlclub.com/events",
+    "https://www.moth-club.co.uk/events",
+    "https://www.corsica-studios.co.uk/events",
+    "https://www.totteridgevalley.co.uk/events",
+    "https://www.nts.live/shows",
+    "https://www.gigseekr.com/uk/london/all/all",
+]
+
+# Art sources — newexhibitions.com as primary
+ART_SOURCES = [
+    "https://www.newexhibitions.com/calendar",
+    "https://www.tate.org.uk/whats-on",
+    "https://www.saatchigallery.com/whats-on",
+    "https://whitechapelgallery.org/exhibitions/",
+    "https://www.serpentinegalleries.org/whats-on/",
+    "https://www.victoria-miro.com/exhibitions/",
+    "https://www.southlondon-gallery.org/whats-on/",
+    "https://www.friezeacademy.com/events",
+    "https://www.christies.com/en/london",
+    "https://www.sothebys.com/en/london",
+    "https://www.bonhams.com/auction/london/",
+]
+
+# Sustainability sources
+SUSTAINABILITY_SOURCES = [
+    "https://www.eventbrite.co.uk/d/united-kingdom--london/sustainability/",
+    "https://www.iema.net/events",
+    "https://www.edie.net/events/",
+    "https://www.green-alliance.org.uk/events/",
+    "https://www.forumforthefuture.org/events",
+    "https://www.lsx.org.uk/events/",
+    "https://www.meetup.com/find/?keywords=sustainability&location=London",
+    "https://carbonliteracy.com/events/",
+]
+
 # ── Scraping ─────────────────────────────────────────────────
-def scrape_text(url: str, max_chars: int = 4000) -> str:
+def scrape_text(url: str, max_chars: int = 3500) -> str:
     try:
         r = requests.get(url, headers=HEADERS, timeout=12)
         soup = BeautifulSoup(r.text, "html.parser")
+
+        # Try to extract event-specific links before stripping
+        links = []
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            text = a.get_text(strip=True)
+            if text and len(text) > 3 and any(k in href.lower() for k in [
+                "event", "gig", "show", "ticket", "night", "live", "exhibit", "auction"
+            ]):
+                full = href if href.startswith("http") else url.rstrip("/") + "/" + href.lstrip("/")
+                links.append(f"LINK: {text} -> {full}")
+
         for tag in soup(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
         text = " ".join(soup.get_text(" ", strip=True).split())
-        return text[:max_chars]
+
+        link_block = "\n".join(links[:30])
+        combined = f"{text[:max_chars]}\n\nEVENT LINKS FOUND:\n{link_block}"
+        return combined
     except Exception as e:
         return f"[Could not fetch {url}: {e}]"
 
-def scrape_all(sources: list[str]) -> str:
+def scrape_all(sources: list) -> str:
     chunks = []
     for url in sources:
         text = scrape_text(url)
@@ -33,73 +114,113 @@ def scrape_all(sources: list[str]) -> str:
     return "\n---\n".join(chunks)
 
 # ── Claude curation ──────────────────────────────────────────
-def curate_events(raw_text: str, category: str, extra_instructions: str = "") -> list[dict]:
+def curate_music_events(raw_text: str) -> list:
     today = datetime.now()
     one_month    = (today + timedelta(days=30)).strftime("%d %B %Y")
     three_months = (today + timedelta(days=90)).strftime("%d %B %Y")
 
-    prompt = f"""You are curating a personal weekly events newsletter for someone based in London.
+    prompt = f"""You are curating a personal weekly music events newsletter for someone based in London.
 Today's date: {today.strftime("%d %B %Y")}
 
-CATEGORY: {category}
-
-THEIR PREFERENCES:
-- Favourite music artists: {", ".join(FAVOURITE_ARTISTS)}
+THEIR MUSIC PREFERENCES:
+- Favourite artists: {", ".join(FAVOURITE_ARTISTS)}
 - Favourite genres: {", ".join(FAVOURITE_GENRES)}
 - Curation notes: {CURATION_NOTES}
-{extra_instructions}
 
-RAW SCRAPED DATA FROM EVENT WEBSITES:
+IMPORTANT INSTRUCTIONS:
+- Include a MIX of small intimate venue gigs AND larger shows
+- Prioritise events at these named venues: Shacklewell Arms, Phonox, The Cause, The Haggerston, 
+  Jago, Hootennany, Electric Brixton, Carpet Shop, Peckham Palais, Night Tales, Bambi, Fabric, 
+  FOLD, Oval Space, Corsica Studios, Moth Club
+- If you find an event link in the scraped data, USE THAT EXACT LINK — do not use the homepage
+- Include events matching preferred genres AND artists, weighted toward afrobeats, grime, 
+  UK rap, house, dancehall, techno, soca, Latin
+
+RAW SCRAPED DATA:
 {raw_text}
 
-Extract and return a JSON array of events. Each event object must have:
-- "title": event name
-- "date": date string
-- "venue": venue name and area of London
-- "description": 2 sharp editorial sentences (not touristy, not corporate)
+Return a JSON array. Each event object must have:
+- "title": artist/event name
+- "date": date string  
+- "venue": venue name and area
+- "description": 2 sharp editorial sentences — not generic, mention the artist/genre specifically
 - "price": ticket price or "Free"
-- "url": link to event page
-- "bucket": either "upcoming_month" (within {one_month}) or "further_ahead" (up to {three_months})
-- "category": one of: music | sustainability | art | networking
+- "url": DIRECT link to that specific event page if found, otherwise ticketing homepage
+- "bucket": "upcoming_month" (within {one_month}) or "further_ahead" (up to {three_months})
+- "category": "music"
 
-Return ONLY valid JSON. No markdown, no explanation.
-For upcoming_month: aim for 8-10 events total across categories.
-For further_ahead: aim for 2-3 events.
-If data is sparse, return what you can find."""
+Aim for 6-8 upcoming_month events and 1-2 further_ahead events.
+Return ONLY valid JSON. No markdown."""
 
     resp = client.messages.create(
         model="claude-sonnet-4-5",
-        max_tokens=4000,
+        max_tokens=3000,
         messages=[{"role": "user", "content": prompt}]
     )
-    raw = resp.content[0].text.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
+    raw = resp.content[0].text.strip().replace("```json","").replace("```","").strip()
     try:
         return json.loads(raw)
     except Exception:
         return []
 
 
-def get_music_headlines() -> list[dict]:
+def curate_other_events(raw_text: str, category: str, extra: str = "") -> list:
+    today = datetime.now()
+    one_month    = (today + timedelta(days=30)).strftime("%d %B %Y")
+    three_months = (today + timedelta(days=90)).strftime("%d %B %Y")
+
+    prompt = f"""You are curating a personal weekly events newsletter for someone based in London.
+Today's date: {today.strftime("%d %B %Y")}
+CATEGORY: {category}
+{extra}
+
+CURATION NOTES: {CURATION_NOTES}
+
+RAW SCRAPED DATA:
+{raw_text}
+
+Return a JSON array. Each event object must have:
+- "title": event name
+- "date": date string
+- "venue": venue name and area
+- "description": 2 sharp editorial sentences
+- "price": ticket price or "Free"
+- "url": DIRECT link to that specific event page if found in the data, otherwise source homepage
+- "bucket": "upcoming_month" (within {one_month}) or "further_ahead" (up to {three_months})
+- "category": one of: sustainability | art | networking
+
+Aim for 4-6 upcoming_month events. Return ONLY valid JSON. No markdown."""
+
+    resp = client.messages.create(
+        model="claude-sonnet-4-5",
+        max_tokens=3000,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    raw = resp.content[0].text.strip().replace("```json","").replace("```","").strip()
+    try:
+        return json.loads(raw)
+    except Exception:
+        return []
+
+
+def get_music_headlines() -> list:
     prompt = f"""You are a music journalist writing for a London culture newsletter.
 Today: {datetime.now().strftime("%d %B %Y")}
 
-Using your knowledge of live music, return a JSON array of 5-7 notable upcoming live music events
-or festivals happening in the UK (primarily London but can include major UK festivals) over the
-next 12 months that would appeal to someone who loves:
-
+Return a JSON array of 5-7 notable upcoming live music events or festivals in the UK 
+over the next 12 months for someone who loves:
 Artists: {", ".join(FAVOURITE_ARTISTS)}
 Genres: {", ".join(FAVOURITE_GENRES)}
 
-Include 4-5 events matching their taste and 1-2 genuine surprises — artists outside their usual
-genres but that a culturally curious person might love. Mark surprises with "surprise": true.
+Include 4-5 matching their taste and 1-2 genuine surprises (mark with "surprise": true).
+Mix big festival headline acts with notable smaller shows.
 
 Each object must have:
 - "title": artist or festival name
 - "date": approximate date or month/year
 - "venue": venue or festival site
 - "description": one punchy sentence on why this matters
-- "url": ticketing or info URL (use real known URLs where possible)
+- "url": real ticketing or info URL
 - "price": approximate price range
 - "surprise": true or false
 
@@ -110,7 +231,7 @@ Return ONLY valid JSON. No markdown."""
         max_tokens=2000,
         messages=[{"role": "user", "content": prompt}]
     )
-    raw = resp.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+    raw = resp.content[0].text.strip().replace("```json","").replace("```","").strip()
     try:
         return json.loads(raw)
     except Exception:
@@ -118,19 +239,18 @@ Return ONLY valid JSON. No markdown."""
 
 
 def get_surprise_pick() -> dict:
-    prompt = f"""Recommend ONE music artist or event as a total wildcard surprise for someone who loves:
+    prompt = f"""Recommend ONE music artist as a total wildcard for someone who loves:
 Artists: {", ".join(FAVOURITE_ARTISTS)}
 Genres: {", ".join(FAVOURITE_GENRES)}
 
-This should be completely outside their normal taste — could be classical, experimental, folk,
-jazz, spoken word, world music — anything. But it should be something that, on reflection,
-they might genuinely connect with given their broader sensibility.
+Completely outside their normal taste — classical, experimental, folk, jazz, spoken word, 
+world music — anything bold. Should be something they might genuinely connect with.
 
-Return a single JSON object with:
+Return a single JSON object:
 - "artist": name
 - "genre": genre
-- "why": 2 sentences on why this is worth their attention
-- "url": a relevant link (YouTube, Spotify, website)
+- "why": 2 sentences on why worth their attention
+- "url": YouTube, Spotify, or website link
 
 Return ONLY valid JSON."""
 
@@ -139,15 +259,15 @@ Return ONLY valid JSON."""
         max_tokens=500,
         messages=[{"role": "user", "content": prompt}]
     )
-    raw = resp.content[0].text.strip().replace("```json", "").replace("```", "").strip()
+    raw = resp.content[0].text.strip().replace("```json","").replace("```","").strip()
     try:
         return json.loads(raw)
     except Exception:
         return {"artist": "Erykah Badu", "genre": "Neo-soul", "why": "A curated surprise.", "url": "https://open.spotify.com"}
 
 
-# ── HTML template — Broadsheet style ─────────────────────────
-def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str:
+# ── HTML template — Broadsheet ────────────────────────────────
+def build_html(events: list, headlines: list, surprise: dict) -> str:
     today_str  = datetime.now().strftime("%A %d %B %Y").upper()
     date_short = datetime.now().strftime("%d %B %Y")
     issue_num  = datetime.now().strftime("%Y%W")
@@ -168,8 +288,8 @@ def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str
         return f'<span style="background:{bg};color:{color};border:1px solid {border};font-family:\'Courier New\',monospace;font-size:9px;font-weight:700;letter-spacing:1px;padding:2px 7px;">{price.upper()}</span>'
 
     def event_card(e: dict) -> str:
-        icon  = cat_icons.get(e.get("category", ""), "◈")
-        label = cat_labels.get(e.get("category", ""), e.get("category", "").upper())
+        icon  = cat_icons.get(e.get("category",""), "◈")
+        label = cat_labels.get(e.get("category",""), e.get("category","").upper())
         return f"""
 <div style="padding:16px 0;border-top:1px solid #d0ccc0;">
   <table width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -183,11 +303,10 @@ def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str
 </div>"""
 
     def grid_events(event_list: list) -> str:
-        """Render events in a two-column newspaper grid."""
         rows = []
         for i in range(0, len(event_list), 2):
             left  = event_card(event_list[i])
-            right = event_card(event_list[i + 1]) if i + 1 < len(event_list) else ""
+            right = event_card(event_list[i+1]) if i+1 < len(event_list) else ""
             rows.append(f"""
 <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
@@ -213,8 +332,8 @@ def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str
   </td>
 </tr>"""
 
-    upcoming_html  = grid_events(upcoming)  if upcoming  else "<p style='font-family:Georgia,serif;color:#999;font-style:italic;padding:16px 0;'>No events found this week — check back next Friday.</p>"
-    further_html   = grid_events(further)   if further   else "<p style='font-family:Georgia,serif;color:#999;font-style:italic;padding:16px 0;'>Nothing notable on the horizon yet.</p>"
+    upcoming_html  = grid_events(upcoming) if upcoming else "<p style='font-family:Georgia,serif;color:#999;font-style:italic;padding:16px 0;'>No events found this week — check back next Friday.</p>"
+    further_html   = grid_events(further)  if further  else "<p style='font-family:Georgia,serif;color:#999;font-style:italic;padding:16px 0;'>Nothing notable on the horizon yet.</p>"
     headlines_html = "".join(headline_row(h) for h in headlines) if headlines else "<tr><td><p style='font-family:Georgia,serif;color:#999;font-style:italic;'>Check back for upcoming shows.</p></td></tr>"
 
     return f"""<!DOCTYPE html>
@@ -253,7 +372,7 @@ def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str
     </p>
   </div>
 
-  <!-- THIS MONTH — two-column newspaper grid -->
+  <!-- THIS MONTH -->
   <div style="padding:28px 40px 8px;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td><h2 style="margin:0;font-family:Georgia,serif;font-size:11px;font-weight:700;color:#1a1a1a;letter-spacing:3px;text-transform:uppercase;">This Month</h2></td>
@@ -266,7 +385,7 @@ def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str
   <!-- DIVIDER -->
   <div style="margin:0 40px;border-top:1px solid #d0ccc0;"></div>
 
-  <!-- ON THE HORIZON — two-column grid -->
+  <!-- ON THE HORIZON -->
   <div style="padding:24px 40px 8px;background:#f2ede3;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td><h2 style="margin:0;font-family:Georgia,serif;font-size:11px;font-weight:700;color:#1a1a1a;letter-spacing:3px;text-transform:uppercase;">On The Horizon</h2></td>
@@ -276,7 +395,7 @@ def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str
     {further_html}
   </div>
 
-  <!-- MUSIC HEADLINES — full-width rows -->
+  <!-- MUSIC HEADLINES -->
   <div style="padding:24px 40px 8px;">
     <table width="100%" cellpadding="0" cellspacing="0"><tr>
       <td><h2 style="margin:0;font-family:Georgia,serif;font-size:11px;font-weight:700;color:#1a1a1a;letter-spacing:3px;text-transform:uppercase;">Headline Acts &amp; Festivals</h2></td>
@@ -288,7 +407,7 @@ def build_html(events: list[dict], headlines: list[dict], surprise: dict) -> str
     </table>
   </div>
 
-  <!-- WILDCARD PICK — dark inset box -->
+  <!-- WILDCARD PICK -->
   <div style="margin:16px 40px 28px;padding:20px 24px;background:#1a1a1a;border:1px solid #333;">
     <p style="margin:0 0 2px;font-family:'Courier New',monospace;font-size:8px;color:#aaa;letter-spacing:3px;">THIS WEEK'S WILDCARD</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px;"><tr>
@@ -336,7 +455,7 @@ def send_email(html: str):
         timeout=15,
     )
     if r.status_code in (200, 201):
-        print(f"✅ Newsletter sent to {TO_EMAIL}")
+        print(f"✅ Newsletter sent to ryan.ryan759@gmail.com")
     else:
         print(f"❌ Resend error {r.status_code}: {r.text}")
         raise RuntimeError("Email sending failed")
@@ -344,8 +463,16 @@ def send_email(html: str):
 
 # ── Main ─────────────────────────────────────────────────────
 def main():
-    print("🔍 Scraping music sources...")
-    music_raw = scrape_all(MUSIC_SOURCES)
+    print("🔍 Scraping ticketing platforms...")
+    ticketing_raw = scrape_all(TICKETING_SOURCES)
+
+    print("🔍 Scraping named venues...")
+    venues_raw = scrape_all(NAMED_VENUE_SOURCES)
+
+    print("🔍 Scraping wider London nightlife venues...")
+    timeout_raw = scrape_all(TIMEOUT_VENUE_SOURCES)
+
+    music_raw = ticketing_raw + "\n---\n" + venues_raw + "\n---\n" + timeout_raw
 
     print("🔍 Scraping sustainability sources...")
     sustain_raw = scrape_all(SUSTAINABILITY_SOURCES)
@@ -353,10 +480,27 @@ def main():
     print("🔍 Scraping art sources...")
     art_raw = scrape_all(ART_SOURCES)
 
-    print("🤖 Curating events with Claude...")
-    music_events   = curate_events(music_raw,    "live music events in London")
-    sustain_events = curate_events(sustain_raw,  "sustainability talks and networking events in London", "Only include FREE events.")
-    art_events     = curate_events(art_raw,      "art exhibitions, private views, and auctions in London")
+    print("🤖 Curating music events...")
+    music_events = curate_music_events(music_raw)
+
+    print("🤖 Curating sustainability events...")
+    sustain_events = curate_other_events(
+        sustain_raw,
+        "sustainability talks and networking events in London",
+        "Only include FREE events."
+    )
+
+    print("🤖 Curating art events...")
+    art_events = curate_other_events(
+        art_raw,
+        "art exhibitions and auctions in London",
+        """IMPORTANT: 
+- Prioritise PRIVATE VIEWS and opening nights above regular exhibition runs
+- Use newexhibitions.com as the primary source
+- For private views, use the private view date as the event date
+- Favour smaller independent galleries over blockbuster shows
+- Include auction preview events where possible"""
+    )
 
     all_events = music_events + sustain_events + art_events
 
@@ -371,7 +515,6 @@ def main():
 
     print("📬 Sending email...")
     send_email(html)
-
 
 if __name__ == "__main__":
     main()
